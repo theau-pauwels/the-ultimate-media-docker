@@ -1,0 +1,96 @@
+version: "3.8"
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - media-net
+    volumes:
+      - ${BASE_DIR}/config/prometheus:/etc/prometheus       # for prometheus.yml config
+      - ${BASE_DIR}/monitoring/prometheus:/prometheus       # data storage
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.${DOMAIN}`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=le"
+      - "traefik.http.routers.prometheus-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/prometheus`)"
+      - "traefik.http.routers.prometheus-path.entrypoints=websecure"
+      - "traefik.http.routers.prometheus-path.tls.certresolver=le"
+      - "traefik.http.routers.prometheus-path.service=prometheus"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+      # Prometheus UI on 9090. (Note: Prometheus has no auth - consider not exposing publicly or secure via Traefik basic auth.)
+    depends_on:
+      - nodeexporter
+      - cadvisor
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Above: disable user signup, set admin user/password from secrets.
+      # (These come from admin_credentials.env via .env variable expansion or you can set directly here.)
+      - TZ=${TZ}
+    env_file:
+      - ./secrets/admin_credentials.env   # Contains GF_SECURITY_ADMIN_USER/PASSWORD as well
+    volumes:
+      - ${BASE_DIR}/config/grafana:/etc/grafana   # for custom configs or provisioning (optional)
+      - ${BASE_DIR}/monitoring/grafana:/var/lib/grafana  # persistent Grafana data (sqlite DB, etc.)
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.${DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=le"
+      - "traefik.http.routers.grafana-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/grafana`)"
+      - "traefik.http.routers.grafana-path.entrypoints=websecure"
+      - "traefik.http.routers.grafana-path.tls.certresolver=le"
+      - "traefik.http.routers.grafana-path.service=grafana"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      # Grafana default port 3000.
+
+  nodeexporter:
+    image: prom/node-exporter:latest
+    container_name: nodeexporter
+    restart: unless-stopped
+    networks:
+      - media-net
+    # To monitor host metrics, give access to host's proc and sys:
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    command:
+      - "--path.rootfs=/host"   # Use the host path for reading /proc and /sys
+    expose:
+      - "9100"
+    # No Traefik labels here because we don't need to expose Node Exporter outside.
+    # Prometheus will scrape it internally at nodeexporter:9100.
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    networks:
+      - media-net
+    devices:
+      - /dev/kmsg:/dev/kmsg   # might be needed for cAdvisor to read kernel messages
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    expose:
+      - "8080"
+    # cAdvisor also doesn't need external exposure; Prometheus scrapes it at cadvisor:8080/metrics.

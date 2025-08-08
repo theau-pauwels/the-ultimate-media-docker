@@ -1,0 +1,134 @@
+version: "3.8"
+services:
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_DIR}/config/sonarr:/config
+      - ${BASE_DIR}/media/tv:/tv       # TV library path (Sonarr will import shows here)
+      - ${BASE_DIR}/downloads/tv:/downloads  # Downloaded episodes from qBittorrent
+    labels:
+      - "traefik.enable=true"
+      # Router for subdomain access (e.g., sonarr.example.com)
+      - "traefik.http.routers.sonarr.rule=Host(`sonarr.${DOMAIN}`)"
+      - "traefik.http.routers.sonarr.entrypoints=websecure"
+      - "traefik.http.routers.sonarr.tls.certresolver=le"
+      # Router for path-based access (e.g., example.com/sonarr)
+      - "traefik.http.routers.sonarr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/sonarr`)"
+      - "traefik.http.routers.sonarr-path.entrypoints=websecure"
+      - "traefik.http.routers.sonarr-path.tls.certresolver=le"
+      - "traefik.http.routers.sonarr-path.service=sonarr"   # Use the same service as main
+      - "traefik.http.services.sonarr.loadbalancer.server.port=8989"
+      # Note: We recommend setting Sonarr's internal URL Base to /sonarr if using path routing.
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_DIR}/config/radarr:/config
+      - ${BASE_DIR}/media/movies:/movies   # Movie library path
+      - ${BASE_DIR}/downloads/movies:/downloads  # Downloaded movies
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.radarr.rule=Host(`radarr.${DOMAIN}`)"
+      - "traefik.http.routers.radarr.entrypoints=websecure"
+      - "traefik.http.routers.radarr.tls.certresolver=le"
+      - "traefik.http.routers.radarr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/radarr`)"
+      - "traefik.http.routers.radarr-path.entrypoints=websecure"
+      - "traefik.http.routers.radarr-path.tls.certresolver=le"
+      - "traefik.http.routers.radarr-path.service=radarr"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+      # Radarr's internal port 7878 is used.
+      # Set Radarr's URL Base to /radarr if using path.
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_DIR}/config/lidarr:/config
+      - ${BASE_DIR}/media/music:/music    # Music library path
+      - ${BASE_DIR}/downloads/music:/downloads  # Downloaded music
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.lidarr.rule=Host(`lidarr.${DOMAIN}`)"
+      - "traefik.http.routers.lidarr.entrypoints=websecure"
+      - "traefik.http.routers.lidarr.tls.certresolver=le"
+      - "traefik.http.routers.lidarr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/lidarr`)"
+      - "traefik.http.routers.lidarr-path.entrypoints=websecure"
+      - "traefik.http.routers.lidarr-path.tls.certresolver=le"
+      - "traefik.http.routers.lidarr-path.service=lidarr"
+      - "traefik.http.services.lidarr.loadbalancer.server.port=8686"
+      # Lidarr uses port 8686 internally.
+      # Set Lidarr's URL Base to /lidarr if using path.
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_DIR}/config/prowlarr:/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.${DOMAIN}`)"
+      - "traefik.http.routers.prowlarr.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr.tls.certresolver=le"
+      - "traefik.http.routers.prowlarr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/prowlarr`)"
+      - "traefik.http.routers.prowlarr-path.entrypoints=websecure"
+      - "traefik.http.routers.prowlarr-path.tls.certresolver=le"
+      - "traefik.http.routers.prowlarr-path.service=prowlarr"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+      # Prowlarr on port 9696. URL Base to /prowlarr if using path.
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${BASE_DIR}/config/bazarr:/config
+      - ${BASE_DIR}/media/movies:/movies
+      - ${BASE_DIR}/media/tv:/tv
+      # Bazarr needs access to media files to scan and add subtitles.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bazarr.rule=Host(`bazarr.${DOMAIN}`)"
+      - "traefik.http.routers.bazarr.entrypoints=websecure"
+      - "traefik.http.routers.bazarr.tls.certresolver=le"
+      - "traefik.http.routers.bazarr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/bazarr`)"
+      - "traefik.http.routers.bazarr-path.entrypoints=websecure"
+      - "traefik.http.routers.bazarr-path.tls.certresolver=le"
+      - "traefik.http.routers.bazarr-path.service=bazarr"
+      - "traefik.http.services.bazarr.loadbalancer.server.port=6767"
+      # Bazarr uses port 6767. Set Base URL to /bazarr if using path.

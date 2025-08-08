@@ -1,0 +1,63 @@
+version: "3.8"
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      # Hardware acceleration options (optional):
+      # - NVIDIA_VISIBLE_DEVICES=all
+      # - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
+    volumes:
+      - ${BASE_DIR}/config/jellyfin:/config
+      - ${BASE_DIR}/media:/media    # Mount entire media library (Jellyfin libraries will be subfolders)
+      - ${BASE_DIR}/media:/data     # (Jellyfin can use /data as alternate, but not strictly needed)
+      # - /path/to/host/transcode:/transcode  # Optional: for transcoding temp if needed
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyfin.rule=Host(`jellyfin.${DOMAIN}`)"
+      - "traefik.http.routers.jellyfin.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin.tls.certresolver=le"
+      - "traefik.http.routers.jellyfin-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/jellyfin`)"
+      - "traefik.http.routers.jellyfin-path.entrypoints=websecure"
+      - "traefik.http.routers.jellyfin-path.tls.certresolver=le"
+      - "traefik.http.routers.jellyfin-path.service=jellyfin"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+      # Jellyfin default HTTP port is 8096. (HTTPS would be 8920 if enabled internally, but we'll use Traefik's TLS)
+      # Note: Set Jellyfin Base URL to /jellyfin if using path-based routing.
+    ports:
+      - "8096:8096/tcp"   # (Optional) expose internally on LAN without Traefik, e.g., for debugging or DLNA
+      - "1900:1900/udp"   # (Optional) DLNA discovery
+      - "7359:7359/udp"   # (Optional) DLNA
+    # If you don't need DLNA or direct LAN access, you can omit the above ports. Traefik will handle HTTP(S).
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ}
+      # Jellyseerr uses a built-in SQLite by default for its DB (stored under /config).
+      # If connecting to Jellyfin, you'll configure that via the web UI on first run.
+    volumes:
+      - ${BASE_DIR}/config/jellyseerr:/app/config
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jellyseerr.rule=Host(`jellyseerr.${DOMAIN}`)"
+      - "traefik.http.routers.jellyseerr.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr.tls.certresolver=le"
+      - "traefik.http.routers.jellyseerr-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/jellyseerr`)"
+      - "traefik.http.routers.jellyseerr-path.entrypoints=websecure"
+      - "traefik.http.routers.jellyseerr-path.tls.certresolver=le"
+      - "traefik.http.routers.jellyseerr-path.service=jellyseerr"
+      - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+      # Jellyseerr default port is 5055.
+      # Note: You'll typically access Jellyseerr via browser and configure it to point to Jellyfin/Sonarr/Radarr.

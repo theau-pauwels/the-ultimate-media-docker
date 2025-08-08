@@ -1,0 +1,10 @@
+version: "3.8"
+# Main aggregator compose file - includes all other compose files via .env COMPOSE_FILE
+networks:
+  media-net:
+    name: media-stack
+    driver: bridge
+    # This network is shared by all services for inter-communication
+    # (Traefik uses this network to reach other containers, etc.)
+services:
+  # (No primary services defined in this file; see compose.*.yml files for actual services)

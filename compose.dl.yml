@@ -1,0 +1,77 @@
+version: "3.8"
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+    networks:
+      - media-net
+    cap_add:
+      - NET_ADMIN        # Required to change network interfaces
+    devices:
+      - /dev/net/tun:/dev/net/tun  # TUN device for VPN
+    volumes:
+      - ${BASE_DIR}/vpn/wg0.conf:/gluetun/wireguard/wg0.conf
+      - ${BASE_DIR}/config/qbittorrent:/gluetun/qbittorrent  # Share config directory with qBittorrent if needed
+    environment:
+      - VPN_SERVICE_PROVIDER=custom
+      - VPN_TYPE=wireguard
+      - TZ=${TZ}
+      - PUID=${PUID}
+      - PGID=${PGID}
+      # Additional Gluetun settings (optional):
+      # - FIREWALL_VPN_INPUT_PORTS=xxxx (if you want to allow incoming port, e.g., for qBittorrent port if forwarded)
+      # - TRAEFIK_PROTOCOL=http (gluetun's built-in HTTP proxy can be enabled if needed)
+    labels:
+      - "traefik.enable=true"
+      # Traefik routes for qBittorrent are attached to Gluetun, since qBittorrent's network is the same as Gluetun.
+      - "traefik.http.routers.qbittorrent.rule=Host(`qbittorrent.${DOMAIN}`)"
+      - "traefik.http.routers.qbittorrent.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent.tls.certresolver=le"
+      - "traefik.http.routers.qbittorrent-path.rule=Host(`${DOMAIN}`) && PathPrefix(`/qbittorrent`)"
+      - "traefik.http.routers.qbittorrent-path.entrypoints=websecure"
+      - "traefik.http.routers.qbittorrent-path.tls.certresolver=le"
+      - "traefik.http.routers.qbittorrent-path.service=qbittorrent"
+      - "traefik.http.services.qbittorrent.loadbalancer.server.port=8080"
+      # We treat Gluetun as the service endpoint for qBittorrent's web UI (on port 8080).
+    networks:
+      media-net:
+        aliases:
+          - qbittorrent    # So other containers can resolve 'qbittorrent' to this service (for API access)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --timeout=5 --tries=1 https://api.ipify.org -O /dev/null"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # The above healthcheck tries to fetch an external IP. If it fails, gluetun is considered unhealthy.
+    # Autoheal will then restart it. You can adjust the interval or disable if it's too sensitive.
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    # Notice no networks here, we use gluetun's network stack
+    network_mode: service:gluetun   # All network traffic for qBittorrent flows through Gluetun
+    depends_on:
+      - gluetun   # Ensure VPN is up before qBittorrent starts
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+      # Credentials are provided via env file for security:
+    env_file:
+      - ./secrets/admin_credentials.env
+      # This file provides WEBUI_USER and WEBUI_PASS
+    volumes:
+      - ${BASE_DIR}/config/qbittorrent:/config
+      - ${BASE_DIR}/downloads:/downloads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v2/app/version"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # qBittorrent's healthcheck tries to hit its local API. If the VPN is down, this might still return healthy (since it's local).
+    # But if qBittorrent crashes or web UI hangs, this can detect it.

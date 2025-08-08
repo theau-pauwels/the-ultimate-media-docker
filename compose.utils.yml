@@ -1,0 +1,31 @@
+version: "3.8"
+services:
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: unless-stopped
+    networks:
+      - media-net
+    # Autoheal can monitor all Docker containers and restart unhealthy ones
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all   # watch all containers for health (those with healthcheck defined)
+      - AUTOHEAL_INTERVAL=30           # check every 30 seconds
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=20
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # No labels; we don't need to expose this.
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    networks:
+      - media-net
+    environment:
+      - WATCHTOWER_CLEANUP=true          # remove old images
+      - WATCHTOWER_CHECK_INTERVAL=86400  # check once a day (in seconds, 86400s = 24h)
+      # - WATCHTOWER_LABEL_ENABLE=true   # (optional) if you prefer to only update containers with a certain label
+      # - WATCHTOWER_LIFECYCLE_HOOKS=true # allow pre/post update hooks (not used here)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # No labels (not exposed). It will update all containers unless configured otherwise.

@@ -1,0 +1,39 @@
+version: "3.8"
+services:
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      - media-net
+    ports:
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # Allows Traefik to monitor Docker events (for auto-config)
+      - ${BASE_DIR}/config/traefik/acme.json:/etc/traefik/acme.json   # Persist ACME (LetsEncrypt) certificates
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.network=media-stack"    # Monitor containers on the "media-stack" network
+      - "--providers.docker.exposedbydefault=false" # Only expose containers that have explicit labels
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"   # Redirect HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.http.tls=true"
+      - "--certificatesresolvers.le.acme.tlschallenge=true"   # Use TLS-ALPN challenge for LetsEncrypt
+      - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"   # Email for LetsEncrypt notifications
+      - "--certificatesresolvers.le.acme.storage=/etc/traefik/acme.json"
+    labels:
+      # (Optional) Example: route Traefik's own dashboard (disabled by default for security)
+      # If needed, uncomment and set up basic auth:
+      # - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN}`)"
+      # - "traefik.http.routers.traefik.service=api@internal"
+      # - "traefik.http.routers.traefik.entrypoints=websecure"
+      # - "traefik.http.routers.traefik.tls.certresolver=le"
+      # - "traefik.http.routers.traefik.middlewares=auth@file"
+      # (Where auth@file is a basic auth middleware defined in a file, not configured here by default)
+    depends_on:
+      - gluetun  # Ensure VPN is up (and thus network ready) before starting Traefik
+    # Note: Traefik doesn't necessarily need to depend on gluetun, but forcing an order can help avoid
+    # any networking race conditions.
